@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime, timedelta
 
+import click
 from bs4 import BeautifulSoup
 from bs4.element import PageElement, ResultSet
 
@@ -81,12 +82,28 @@ class BJJFanaticsScraper:
 
     
     @classmethod
-    def get_deals(cls) -> DailyDeals:
-        return cls._list_deals()
+    def get_all_deals(cls) -> DailyDeals:
+        pg = 1
+        curr_page = DailyDeals('', '', [1])
+        total_deals = []
+        while not curr_page.is_empty:
+            curr_page = cls.get_deals(pg)
+            total_deals.extend(curr_page.deals)
+            pg += 1
+        
+        return DailyDeals(
+            updated_date=curr_page.updated_date,
+            expiry_date=curr_page.expiry_date,
+            deals=total_deals
+        )
+
+    @classmethod
+    def get_deals(cls, pg: int = 1) -> DailyDeals:
+        return cls._list_deals(pg=pg)
         
     @classmethod
-    def _list_deals(cls) -> DailyDeals:
-        cards = cls._request_cards()
+    def _list_deals(cls, pg: int) -> DailyDeals:
+        cards = cls._request_cards(pg=pg)
         deals_data = cls._parse_deals(cards)
         deals_info = cls._get_deals_info()
         deals = DailyDeals(
@@ -107,9 +124,9 @@ class BJJFanaticsScraper:
         
 
     @classmethod
-    def _request_cards(cls) -> Sequence[PageElement]:
+    def _request_cards(cls, pg) -> Sequence[PageElement]:
         headers = {'Accept-Encoding': 'identity'}
-        params = {'page': 1}
+        params = {'page': pg}
         
         res = requests.get(
             url=BJJFanaticsScraper.BASE_URL,
@@ -142,7 +159,26 @@ class BJJFanaticsScraper:
 
 
 
+
+@click.command()
+@click.option('--id', is_flag=True, help='Content ID')
+@click.option('--title', is_flag=True, help='Content ID')
+@click.option('--seller', is_flag=True, help='Content ID')
+@click.option('--price', is_flag=True, help='Content ID')
+@click.option('--saleprice', is_flag=True, help='Content ID')
+def main(id, title, seller, price, saleprice):
+    d = BJJFanaticsScraper.get_all_deals()
+    for deal in d.deals:
+        click.echo(f'{deal.id: <16}', nl=False) if id else ''
+        click.echo(f'{deal.title: <92}', nl=False) if title else ''
+        click.echo(f'{deal.seller: <32}', nl=False) if seller else ''
+        click.echo(f'${deal.original_price: <4}', nl=False) if price else ''
+        click.echo(f' -> ', nl=False) if price and saleprice else ''
+        click.echo(f'${deal.current_price: <4}', nl=False) if saleprice else ''
+        click.echo()
+        
+
+
 if __name__ == '__main__':
-    d = BJJFanaticsScraper.get_deals()
-    print(d.date)
+    main()
 
